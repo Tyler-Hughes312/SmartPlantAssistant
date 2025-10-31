@@ -1,0 +1,218 @@
+.plant-management {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(30, 58, 31, 0.12);
+  border: 1px solid rgba(76, 175, 80, 0.12);
+  position: relative;
+  overflow: visible;
+  margin-bottom: 24px;
+  width: 100%;
+}
+
+.plant-management::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, #2e7d32, #4caf50, #66bb6a);
+  opacity: 0.9;
+}
+
+.plant-selector h3 {
+  color: #1b5e20;
+  margin-bottom: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.plants-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.plant-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f8fbf9;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  border: 1.5px solid rgba(76, 175, 80, 0.15);
+  font-size: 0.875rem;
+}
+
+.plant-item:hover {
+  background: #f1f8f4;
+  transform: translateY(-2px);
+  border-color: rgba(76, 175, 80, 0.25);
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.15);
+}
+
+.plant-item.active {
+  background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 50%, #388e3c 100%);
+  color: white;
+  border-color: #2e7d32;
+  box-shadow: 0 2px 8px rgba(27, 94, 32, 0.25);
+}
+
+.plant-item.active .plant-sensor-id {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.plant-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.plant-sensor-id {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.delete-plant-btn {
+  margin-left: auto;
+  background: rgba(239, 68, 68, 0.1);
+  border: none;
+  color: #ef4444;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-plant-btn:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.plant-item.active .delete-plant-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.plant-item.active .delete-plant-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.no-plants {
+  color: #999;
+  font-style: italic;
+  padding: 20px;
+  text-align: center;
+}
+
+.add-plant-button {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(27, 94, 32, 0.25);
+  letter-spacing: 0.01em;
+  width: 100%;
+}
+
+.add-plant-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(27, 94, 32, 0.35);
+  background: linear-gradient(135deg, #15531b 0%, #1b5e20 100%);
+}
+
+.add-plant-form {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f8fbf9;
+  border-radius: 10px;
+  border: 1px solid rgba(76, 175, 80, 0.15);
+}
+
+.add-plant-form h4 {
+  color: #1b5e20;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.add-plant-form .form-group {
+  margin-bottom: 12px;
+}
+
+.add-plant-form .form-group label {
+  display: block;
+  margin-bottom: 6px;
+  color: #333;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.add-plant-form .form-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  background: #ffffff;
+}
+
+.add-plant-form .form-group input:focus {
+  outline: none;
+  border-color: #4caf50;
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+}
+
+.submit-button {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(27, 94, 32, 0.25);
+  letter-spacing: 0.01em;
+  width: 100%;
+}
+
+.submit-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(27, 94, 32, 0.35);
+  background: linear-gradient(135deg, #15531b 0%, #1b5e20 100%);
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background: #fee;
+  color: #c33;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+

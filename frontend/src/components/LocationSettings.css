@@ -1,0 +1,202 @@
+.location-settings {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(30, 58, 31, 0.12);
+  border: 1px solid rgba(76, 175, 80, 0.12);
+  position: relative;
+  overflow: visible;
+  margin-top: 24px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  z-index: 1;
+}
+
+.location-settings::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, #2e7d32, #4caf50, #66bb6a);
+  opacity: 0.9;
+}
+
+.location-settings h3 {
+  color: #1b5e20;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.location-description {
+  display: none;
+}
+
+.location-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.location-form-group {
+  margin-bottom: 0;
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.location-settings form {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex: 1;
+  margin: 0;
+}
+
+.location-form-group label {
+  display: none;
+}
+
+.location-form-group input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #ffffff;
+}
+
+.location-form-group input:hover {
+  border-color: rgba(76, 175, 80, 0.2);
+}
+
+.location-form-group input:focus {
+  outline: none;
+  border-color: #4caf50;
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+}
+
+.location-button {
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(27, 94, 32, 0.25);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.location-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+  background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+}
+
+.location-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.location-submit-button {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(27, 94, 32, 0.25);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.location-submit-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(27, 94, 32, 0.35);
+  background: linear-gradient(135deg, #15531b 0%, #1b5e20 100%);
+}
+
+.location-submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.location-error {
+  background: #fee;
+  color: #c33;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 0;
+  border: 1px solid #fcc;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.location-success {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  color: #2e7d32;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 0;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  font-weight: 500;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.location-info {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  font-size: 0.8125rem;
+  color: #558b2f;
+  border: none;
+  flex-shrink: 0;
+}
+
+.location-info p {
+  margin: 0;
+}
+
+.location-map-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: #2e7d32;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.location-map-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .location-form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
