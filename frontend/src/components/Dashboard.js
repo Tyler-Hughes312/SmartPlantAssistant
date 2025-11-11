@@ -13,7 +13,9 @@ import {
 import SensorDashboard from './SensorDashboard';
 import WeatherSection from './WeatherSection';
 import PredictionCard from './PredictionCard';
-import SensorChart from './SensorChart';
+import LightChart from './LightChart';
+import MoistureChart from './MoistureChart';
+import TemperatureChart from './TemperatureChart';
 import PredictionChart from './PredictionChart';
 import PlantManagement from './PlantManagement';
 import PlantHealthScore from './PlantHealthScore';
@@ -27,6 +29,7 @@ const Dashboard = () => {
   const [weatherData, setWeatherData] = useState(null);
   const [prediction, setPrediction] = useState(null);
   const [history, setHistory] = useState([]);
+  const [predictionHistory, setPredictionHistory] = useState([]);
   const [plants, setPlants] = useState([]);
   const [selectedPlantId, setSelectedPlantId] = useState(null);
   const [selectedPlant, setSelectedPlant] = useState(null);
@@ -46,6 +49,8 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (selectedPlantId) {
+      // Reset prediction history when switching plants
+      setPredictionHistory([]);
       loadData();
       const interval = setInterval(loadData, 5000);
       return () => clearInterval(interval);
@@ -84,23 +89,69 @@ const Dashboard = () => {
 
       setSensorData(sensor);
       setSelectedPlant(plants.find(p => p.id === selectedPlantId));
-      setHistory(historyData.map(h => ({
-        ...h,
-        timestamp: new Date(h.timestamp),
-        prediction: null // Will be updated with prediction
-      })));
+      
+      // Only update history if data actually changed (compare timestamps)
+      setHistory(prev => {
+        const newHistory = historyData.map(h => ({
+          ...h,
+          timestamp: new Date(h.timestamp),
+          prediction: null // Will be updated with prediction
+        }));
+        
+        // Check if the latest timestamp is different
+        const prevLatest = prev.length > 0 ? prev[prev.length - 1]?.timestamp?.getTime() : null;
+        const newLatest = newHistory.length > 0 ? newHistory[newHistory.length - 1]?.timestamp?.getTime() : null;
+        
+        // Only update if we have new data (different latest timestamp)
+        if (prevLatest !== newLatest) {
+          return newHistory;
+        }
+        return prev; // No change, return previous state
+      });
 
       // Get weather if not loaded
       if (!weatherData) {
         await updateWeather();
       }
 
-      // Get prediction and health data
-      if (sensor && weatherData) {
-        const pred = await fetchPrediction(sensor, weatherData);
-        setPrediction(pred);
-        
-        // Try to get health data (may fail if no readings yet)
+      // Get prediction - try even if sensor data is missing (weather-only prediction)
+      if (weatherData) {
+        try {
+          const pred = await fetchPrediction(sensor || {}, weatherData);
+          setPrediction(pred);
+          
+          // Add prediction to history if it's significantly different from the last one
+          const predictionValue = pred.hoursUntilWatering || pred.wateringFrequencyDays;
+          if (predictionValue != null) {
+            setPredictionHistory(prev => {
+              const lastPrediction = prev.length > 0 ? prev[prev.length - 1] : null;
+              const lastValue = lastPrediction?.prediction;
+              
+              // Only add if it's different by more than 5% or if it's the first prediction
+              const shouldAdd = !lastValue || 
+                Math.abs(predictionValue - lastValue) > Math.max(0.05 * lastValue, 1);
+              
+              if (shouldAdd) {
+                const newEntry = {
+                  timestamp: new Date(),
+                  prediction: predictionValue,
+                  hasMoistureData: pred.hasMoistureData || false
+                };
+                // Keep only last 50 predictions
+                const updated = [...prev, newEntry].slice(-50);
+                return updated;
+              }
+              return prev;
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching prediction:', err);
+          setPrediction(null);
+        }
+      }
+      
+      // Get health data if we have sensor data
+      if (sensor) {
         try {
           const health = await getPlantHealth(selectedPlantId);
           setHealthData(health);
@@ -108,19 +159,6 @@ const Dashboard = () => {
           // No health data yet - that's okay for new plants
           setHealthData(null);
         }
-
-        // Update history with prediction
-        setHistory(prev => {
-          const updated = [...prev];
-          if (updated.length > 0) {
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              prediction: pred.hoursUntilWatering,
-              confidence: pred.confidence
-            };
-          }
-          return updated;
-        });
       }
 
       setLoading(false);
@@ -134,12 +172,48 @@ const Dashboard = () => {
   const updateWeather = async (lat = null, lon = null) => {
     try {
       const weather = await fetchWeather(lat, lon);
-      setWeatherData(weather);
+      
+      // Only update weather if it's significantly different (to prevent constant prediction changes)
+      const shouldUpdate = !weatherData || 
+        Math.abs((weatherData.temperature || 0) - (weather.temperature || 0)) > 2 ||
+        Math.abs((weatherData.humidity || 0) - (weather.humidity || 0)) > 5 ||
+        Math.abs((weatherData.precipitation || 0) - (weather.precipitation || 0)) > 10;
+      
+      if (shouldUpdate) {
+        setWeatherData(weather);
 
-      // Update prediction if we have sensor data
-      if (sensorData) {
-        const pred = await fetchPrediction(sensorData, weather);
-        setPrediction(pred);
+        // Update prediction whenever weather updates (even without sensor data)
+        try {
+          const pred = await fetchPrediction(sensorData || {}, weather);
+          setPrediction(pred);
+          
+          // Add prediction to history if it's significantly different from the last one
+          const predictionValue = pred.hoursUntilWatering || pred.wateringFrequencyDays;
+          if (predictionValue != null) {
+            setPredictionHistory(prev => {
+              const lastPrediction = prev.length > 0 ? prev[prev.length - 1] : null;
+              const lastValue = lastPrediction?.prediction;
+              
+              // Only add if it's different by more than 5% or if it's the first prediction
+              const shouldAdd = !lastValue || 
+                Math.abs(predictionValue - lastValue) > Math.max(0.05 * lastValue, 1);
+              
+              if (shouldAdd) {
+                const newEntry = {
+                  timestamp: new Date(),
+                  prediction: predictionValue,
+                  hasMoistureData: pred.hasMoistureData || false
+                };
+                // Keep only last 50 predictions
+                const updated = [...prev, newEntry].slice(-50);
+                return updated;
+              }
+              return prev;
+            });
+          }
+        } catch (err) {
+          console.error('Error updating prediction:', err);
+        }
       }
     } catch (err) {
       console.error('Error updating weather:', err);
@@ -165,6 +239,7 @@ const Dashboard = () => {
       setSelectedPlantId(null);
       setSensorData(null);
       setHistory([]);
+      setPredictionHistory([]);
       setError('No plants found. Please add a plant first.');
     }
   };
@@ -228,8 +303,12 @@ const Dashboard = () => {
 
           {/* Charts Section */}
           <div className="charts-section">
-            <SensorChart history={history} />
-            <PredictionChart history={history} />
+            <div className="sensor-charts-grid">
+              <LightChart history={history} />
+              <MoistureChart history={history} />
+              <TemperatureChart history={history} />
+            </div>
+            <PredictionChart history={predictionHistory} />
           </div>
 
           {/* Chatbot Section */}

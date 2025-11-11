@@ -49,7 +49,7 @@ const PlantHealthScore = ({ plantId }) => {
     );
   }
 
-  const { score, status, details, factors, current_values } = healthData;
+  const { score, status, details, factors, current_values, confidence, probabilities, model_type } = healthData;
   
   // Safety check for current_values
   if (!current_values || !details) {
@@ -101,7 +101,17 @@ const PlantHealthScore = ({ plantId }) => {
           <div className="health-status">
             <span className="status-icon">{getStatusIcon(status)}</span>
             <span className="status-text">{status}</span>
+            {confidence !== undefined && (
+              <span className="confidence-badge">
+                {Math.round(confidence * 100)}% confidence
+              </span>
+            )}
           </div>
+          {model_type && (
+            <div className="model-type-badge">
+              {model_type}
+            </div>
+          )}
         </div>
       </div>
 

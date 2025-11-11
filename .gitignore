@@ -39,6 +39,10 @@ yarn-error.log*
 backend/instance/
 backend/*.db
 
+# ML Model files (generated, can be retrained)
+backend/*.pkl
+backend/watering_model.pkl
+
 # IDE
 .vscode/
 .idea/

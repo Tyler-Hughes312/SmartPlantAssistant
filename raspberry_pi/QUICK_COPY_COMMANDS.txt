@@ -1,0 +1,22 @@
+# Copy these commands to your terminal
+
+# 1. Copy files to Raspberry Pi (replace IP address)
+scp -r raspberry_pi/ pi@YOUR_PI_IP:~/
+
+# 2. SSH into Raspberry Pi
+ssh pi@YOUR_PI_IP
+
+# 3. On Raspberry Pi - Run setup
+cd ~/raspberry_pi
+chmod +x setup.sh
+./setup.sh
+
+# 4. Edit .env file (use your connection string)
+nano ~/smart_plant_pi/.env
+
+# 5. Test connection
+cd ~/smart_plant_pi
+python3 test_connection.py
+
+# 6. Test sending data (replace 1 with your plant ID)
+python3 send_sensor_data.py 1

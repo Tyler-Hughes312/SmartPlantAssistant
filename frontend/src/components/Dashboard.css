@@ -97,9 +97,28 @@
   align-items: stretch;
 }
 
-.charts-section {
+.sensor-charts-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1200px) {
+  .sensor-charts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .sensor-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.charts-section {
+  display: flex;
+  flex-direction: column;
   gap: 24px;
   margin-bottom: 24px;
 }
@@ -110,10 +129,6 @@
 
 @media (max-width: 1024px) {
   .main-dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .charts-section {
     grid-template-columns: 1fr;
   }
 }

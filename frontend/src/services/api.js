@@ -77,13 +77,21 @@ export const getSensorHistory = async (plantId, limit = 20) => {
 
 // Weather
 export const fetchWeather = async (lat = null, lon = null) => {
-  const params = {};
-  if (lat !== null && lon !== null) {
-    params.lat = lat;
-    params.lon = lon;
+  try {
+    const params = {};
+    if (lat !== null && lon !== null) {
+      params.lat = lat;
+      params.lon = lon;
+    }
+    const response = await api.get('/weather', { params });
+    return response.data;
+  } catch (err) {
+    // Return error object instead of throwing
+    return {
+      error: 'Failed to fetch weather',
+      message: err.response?.data?.message || err.response?.data?.error || err.message || 'Unable to load weather data'
+    };
   }
-  const response = await api.get('/weather', { params });
-  return response.data;
 };
 
 // Predictions

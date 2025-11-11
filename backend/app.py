@@ -34,7 +34,27 @@ else:
     # Fixed dev key - sessions will persist across restarts
     # IMPORTANT: Set SECRET_KEY in .env for production!
     app.config['SECRET_KEY'] = 'dev-secret-key-fixed-for-sessions-please-change-in-production-2024'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///smart_plant.db')
+# Database configuration - supports SQLite (local) and Postgres (Neon)
+# For Neon Postgres: Set DATABASE_URL in .env file
+# Format: postgresql://user:password@host:port/dbname?sslmode=require
+# For SQLite (local dev): Leave DATABASE_URL unset or use sqlite:///smart_plant.db
+database_url = os.environ.get('DATABASE_URL')
+if database_url:
+    # Postgres (Neon) - ensure SSL mode is set
+    if database_url.startswith('postgresql://') or database_url.startswith('postgres://'):
+        # Add sslmode=require if not present (required for Neon)
+        if 'sslmode=' not in database_url:
+            separator = '&' if '?' in database_url else '?'
+            database_url = f"{database_url}{separator}sslmode=require"
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        print(f'✅ Using Postgres database (Neon)')
+    else:
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        print(f'✅ Using custom database: {database_url[:50]}...')
+else:
+    # Default to SQLite for local development
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///smart_plant.db'
+    print('✅ Using SQLite database (local development)')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 # For localhost cross-port, use 'None' with Secure=False (development only)
@@ -110,30 +130,39 @@ def load_user(user_id):
         print(f'DEBUG load_user: Unexpected error loading user_id={user_id}: {e}')
         return None
 
-# ML Model
-class WateringPredictionModel:
-    def __init__(self):
-        self.weights = np.array([
-            [-0.3, -0.8, -0.2, -0.1, 0.4, -0.15, -0.5],
-        ])
-        self.bias = 0.6
-    
-    def predict(self, features):
-        features_array = np.array(features).reshape(1, -1)
-        normalized = np.array([
-            features_array[0][0] / 100,
-            features_array[0][1] / 100,
-            features_array[0][2] / 1000,
-            features_array[0][3] / 100,
-            features_array[0][4] / 100,
-            features_array[0][5] / 20,
-            features_array[0][6] / 10
-        ])
-        prediction = np.dot(normalized, self.weights[0]) + self.bias
-        prediction = 1 / (1 + np.exp(-prediction))
-        return float(prediction)
+# ML Model - Random Forest Regressor for Watering Prediction
+try:
+    from ml_model import WateringPredictionModel
+    # Initialize the Random Forest model
+    # It will load from disk if available, otherwise use fallback predictions
+    ml_model = WateringPredictionModel()
+    print('✅ ML watering model loaded successfully')
+except Exception as e:
+    print(f'⚠️  Warning: Could not load ML watering model: {e}')
+    print('   Using fallback prediction model')
+    import traceback
+    traceback.print_exc()
+    # Create a simple fallback model
+    class FallbackModel:
+        def predict(self, features):
+            # Simple fallback - return 72 hours
+            return 72.0
+        is_trained = False
+    ml_model = FallbackModel()
 
-ml_model = WateringPredictionModel()
+# ML Model - Random Forest Classifier for Health Classification
+try:
+    from health_model import PlantHealthClassifier
+    # Initialize the health classifier
+    # It will load from disk if available, otherwise use fallback predictions
+    health_classifier = PlantHealthClassifier()
+    print('✅ ML health classifier loaded successfully')
+except Exception as e:
+    print(f'⚠️  Warning: Could not load ML health classifier: {e}')
+    print('   Using fallback rule-based health calculation')
+    import traceback
+    traceback.print_exc()
+    health_classifier = None
 
 # NWS API User-Agent (required for API access)
 NWS_USER_AGENT = os.environ.get('NWS_USER_AGENT', 'SmartPlantAssistant-tyler.i.hughes@vanderbilt.edu')
@@ -216,10 +245,10 @@ def register():
                 return jsonify({'error': 'Invalid coordinates'}), 400
             location = f"{latitude:.4f}, {longitude:.4f}"  # Create a simple location string
         else:
-            # Default to NYC if nothing provided
-            location = 'New York, NY'
-            latitude = 40.7128
-            longitude = -74.0060
+            # No default location - user must set it later
+            location = None
+            latitude = None
+            longitude = None
 
         user = User(
             username=username,
@@ -516,7 +545,7 @@ def get_sensor_data():
         if not plant:
             return jsonify({'error': 'Plant not found'}), 404
         
-        # Get latest reading or simulate
+        # Get latest reading from Neon database
         latest_reading = SensorReading.query.filter_by(plant_id=plant_id)\
             .order_by(SensorReading.timestamp.desc()).first()
         
@@ -527,11 +556,22 @@ def get_sensor_data():
                 'light': latest_reading.light,
                 'moisture': latest_reading.moisture,
                 'temperature': latest_reading.temperature,
-                'timestamp': latest_reading.timestamp.isoformat()
+                'timestamp': latest_reading.timestamp.isoformat(),
+                'is_simulated': False  # Real sensor data from Neon
             })
         else:
-            # Simulate data if no readings
-            return jsonify(generate_simulated_data(plant_id, plant.name))
+            # No readings yet - return null instead of simulated data
+            # Frontend will show "No data available" message
+            return jsonify({
+                'plant_id': plant_id,
+                'plant_name': plant.name,
+                'light': None,
+                'moisture': None,
+                'temperature': None,
+                'timestamp': None,
+                'is_simulated': False,
+                'message': 'No sensor readings available yet. Waiting for data from Raspberry Pi.'
+            })
     else:
         # Get all plants' data
         plants = Plant.query.filter_by(user_id=current_user.id).all()
@@ -550,10 +590,21 @@ def get_sensor_data():
                 'light': latest_reading.light,
                 'moisture': latest_reading.moisture,
                 'temperature': latest_reading.temperature,
-                'timestamp': latest_reading.timestamp.isoformat()
+                'timestamp': latest_reading.timestamp.isoformat(),
+                'is_simulated': False  # Real sensor data from Neon
             })
         else:
-            return jsonify(generate_simulated_data(plant.id, plant.name))
+            # No readings yet - return null instead of simulated data
+            return jsonify({
+                'plant_id': plant.id,
+                'plant_name': plant.name,
+                'light': None,
+                'moisture': None,
+                'temperature': None,
+                'timestamp': None,
+                'is_simulated': False,
+                'message': 'No sensor readings available yet. Waiting for data from Raspberry Pi.'
+            })
 
 @app.route('/api/sensor-data', methods=['POST'])
 @login_required
@@ -624,33 +675,22 @@ def get_sensor_history():
         'timestamp': r.timestamp.isoformat()
     } for r in reversed(readings)])
 
-def generate_simulated_data(plant_id, plant_name):
-    """Generate simulated sensor data"""
-    import random
-    import math
-    
-    current_hour = datetime.now().hour
-    light_variation = math.sin((current_hour - 6) * math.pi / 12) * 300 + random.uniform(-25, 25)
-    moisture_variation = random.uniform(-2, 1)
-    temp_variation = math.sin((current_hour - 6) * math.pi / 12) * 8 + random.uniform(-2, 2)
-    
-    return {
-        'plant_id': plant_id,
-        'plant_name': plant_name,
-        'light': max(0, 400 + light_variation),
-        'moisture': max(0, min(100, 45 + moisture_variation)),
-        'temperature': 72 + temp_variation,
-        'timestamp': datetime.now().isoformat()
-    }
 
 @app.route('/api/weather', methods=['GET'])
 @login_required
 def get_weather():
     """Fetch weather data from NWS API"""
     try:
-        # Use user's saved location, or request params, or defaults
-        lat = request.args.get('lat') or current_user.latitude or 40.7128
-        lon = request.args.get('lon') or current_user.longitude or -74.0060
+        # Use user's saved location, or request params (no fake defaults)
+        lat = request.args.get('lat') or current_user.latitude
+        lon = request.args.get('lon') or current_user.longitude
+        
+        if lat is None or lon is None:
+            return jsonify({
+                'error': 'Location not set',
+                'message': 'Please set your location in Location Settings to fetch weather data.'
+            }), 400
+        
         lat = float(lat)
         lon = float(lon)
         
@@ -704,9 +744,8 @@ def get_weather():
             if props.get('relativeHumidity') and props['relativeHumidity'].get('value') is not None:
                 humidity = props['relativeHumidity']['value']
         
-        # Fallback humidity if still not set
-        if humidity is None:
-            humidity = 60
+        # If humidity is not available, return None (don't use fake fallback)
+        # Frontend will handle missing humidity gracefully
         
         # Get wind speed - ALWAYS use forecast wind speed (not observation)
         # The forecast wind speed is in format like "5 to 10 mph" or "8 mph"
@@ -731,17 +770,11 @@ def get_weather():
         
     except Exception as e:
         print(f'Error fetching weather: {e}')
-        # Fallback data - using reasonable defaults
+        # Return error instead of fake fallback data
         return jsonify({
-            'temperature': 72,
-            'humidity': 65,
-            'precipitation': 0,
-            'windSpeed': 8,
-            'forecast': 'Partly Cloudy',
-            'description': 'Weather data temporarily unavailable. Using default values.',
-            'timestamp': datetime.now().isoformat(),
-            'note': 'fallback_data'
-        })
+            'error': 'Unable to fetch weather data. Please check your location settings and try again.',
+            'message': 'Weather data temporarily unavailable.'
+        }), 503
 
 def _parse_wind_speed(wind_string):
     """Parse wind speed from NWS format (e.g., '5 to 10 mph', '5-10 mph', 'Calm', '8 mph')"""
@@ -774,52 +807,73 @@ def _parse_wind_speed(wind_string):
 @app.route('/api/predict', methods=['POST'])
 @login_required
 def predict_watering():
-    """Predict when to water based on sensor and weather data"""
+    """Predict when to water based on sensor and weather data using Random Forest"""
     try:
         data = request.json
         sensor = data.get('sensor', {})
         weather = data.get('weather', {})
         
-        evapotranspiration = (
-            sensor.get('temperature', 72) * 0.05 +
-            weather.get('windSpeed', 5) * 0.1 -
-            weather.get('humidity', 60) * 0.02
-        )
+        # Extract features for prediction model
+        # If moisture data is available, use it; otherwise use weather-only
+        sensor_temp = sensor.get('temperature', weather.get('temperature', 72))
+        humidity = weather.get('humidity', 60)
+        precipitation = weather.get('precipitation', 0)
         
-        features = [
-            sensor.get('moisture', 45),
-            sensor.get('temperature', 72),
-            sensor.get('light', 400),
-            weather.get('humidity', 60),
-            weather.get('precipitation', 0),
-            weather.get('windSpeed', 5),
-            evapotranspiration
-        ]
+        # Check if we have REAL moisture sensor data (not simulated)
+        # Simulated data has is_simulated=True flag, or we check if it's from database
+        sensor_is_simulated = sensor.get('is_simulated', False)
+        moisture = sensor.get('moisture')
+        has_moisture = moisture is not None and not sensor_is_simulated  # Only count real moisture data
         
-        normalized_hours = ml_model.predict(features)
-        hours = normalized_hours * 168
-        hours = max(6, min(168, hours))
+        if has_moisture:
+            # Use all 4 features: [moisture, temperature, humidity, precipitation]
+            features = [moisture, sensor_temp, humidity, precipitation]
+            # Predict hours until watering
+            prediction_result = ml_model.predict(features)
+            hours_until = float(prediction_result) if isinstance(prediction_result, (int, float)) else None
+            frequency_days = None
+        else:
+            # Weather-only: [temperature, humidity, precipitation]
+            features = [sensor_temp, humidity, precipitation]
+            # Predict watering frequency (days)
+            prediction_result = ml_model.predict(features)
+            if isinstance(prediction_result, dict):
+                frequency_days = prediction_result.get('frequency_days')
+                hours_until = prediction_result.get('hours_until')
+            else:
+                frequency_days = float(prediction_result)
+                hours_until = None
         
-        confidence = abs(normalized_hours - 0.5) * 2
-        confidence = max(0.5, confidence)
-        
-        return jsonify({
-            'hoursUntilWatering': round(hours, 1),
-            'confidence': round(confidence, 2),
-            'recommendation': get_watering_recommendation(hours),
+        # Build response
+        response = {
+            'modelType': 'Random Forest' if ml_model.is_trained else 'Weather-Based',
+            'hasMoistureData': has_moisture,
             'timestamp': datetime.now().isoformat()
-        })
+        }
+        
+        if has_moisture and hours_until is not None:
+            # Has moisture data - return hours until watering
+            response['hoursUntilWatering'] = round(hours_until, 1)
+            response['recommendation'] = get_watering_recommendation(hours_until)
+        elif frequency_days is not None:
+            # No moisture data - return watering frequency
+            response['wateringFrequencyDays'] = round(frequency_days, 1)
+            response['recommendation'] = get_watering_frequency_recommendation(frequency_days)
+        
+        return jsonify(response)
         
     except Exception as e:
         print(f'Prediction error: {e}')
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': str(e),
             'hoursUntilWatering': 72,
-            'confidence': 0.7
+            'modelType': 'Error'
         }), 500
 
 def get_watering_recommendation(hours):
-    """Get human-readable watering recommendation"""
+    """Get human-readable watering recommendation based on hours until watering"""
     if hours < 24:
         return 'Water soon'
     elif hours < 48:
@@ -828,6 +882,17 @@ def get_watering_recommendation(hours):
         return 'Water within 3 days'
     else:
         return 'Watering not needed yet'
+
+def get_watering_frequency_recommendation(frequency_days):
+    """Get human-readable watering frequency recommendation"""
+    if frequency_days < 1.5:
+        return f'Water every {round(frequency_days * 24)} hours'
+    elif frequency_days < 2.5:
+        return f'Water every {round(frequency_days)} days'
+    elif frequency_days < 4:
+        return f'Water every {round(frequency_days)} days'
+    else:
+        return f'Water every {round(frequency_days)} days'
 
 def calculate_plant_health_score(plant_id):
     """
@@ -1015,13 +1080,110 @@ def calculate_plant_health_score(plant_id):
 @app.route('/api/plant-health/<int:plant_id>', methods=['GET'])
 @login_required
 def get_plant_health(plant_id):
-    """Get plant health score for a specific plant"""
+    """Get plant health score for a specific plant using ML model if available"""
     plant = Plant.query.filter_by(id=plant_id, user_id=current_user.id).first()
     if not plant:
         return jsonify({'error': 'Plant not found'}), 404
     
-    health = calculate_plant_health_score(plant_id)
-    return jsonify(health)
+    # Try ML model first if available
+    if health_classifier is not None:
+        try:
+            # Get recent sensor readings
+            recent_readings = SensorReading.query.filter_by(plant_id=plant_id)\
+                .order_by(SensorReading.timestamp.desc()).limit(5).all()
+            
+            # Format sensor readings for ML model (oldest first)
+            sensor_readings = []
+            for reading in reversed(recent_readings):
+                sensor_readings.append({
+                    'moisture': reading.moisture,
+                    'temperature': reading.temperature,
+                    'light': reading.light,
+                    'timestamp': reading.timestamp
+                })
+            
+            # Get current weather data (use user's location)
+            weather_data = {}
+            if current_user.latitude and current_user.longitude:
+                try:
+                    # Fetch weather from NWS API
+                    grid_url = f'https://api.weather.gov/points/{current_user.latitude},{current_user.longitude}'
+                    grid_response = requests.get(grid_url, headers=NWS_HEADERS, timeout=10)
+                    
+                    if grid_response.ok:
+                        grid_data = grid_response.json()
+                        forecast_url = grid_data['properties']['forecast']
+                        forecast_response = requests.get(forecast_url, headers=NWS_HEADERS, timeout=10)
+                        
+                        if forecast_response.ok:
+                            forecast_data = forecast_response.json()
+                            periods = forecast_data.get('properties', {}).get('periods', [])
+                            if periods:
+                                current = periods[0]
+                                weather_data = {
+                                    'temperature': current.get('temperature', 72),
+                                    'humidity': current.get('relativeHumidity', {}).get('value', 60),
+                                    'precipitation': current.get('probabilityOfPrecipitation', {}).get('value', 0)
+                                }
+                except Exception as e:
+                    print(f'Error fetching weather for health model: {e}')
+                    # Use defaults
+                    weather_data = {'temperature': 72, 'humidity': 60, 'precipitation': 0}
+            else:
+                # Use defaults if no location
+                weather_data = {'temperature': 72, 'humidity': 60, 'precipitation': 0}
+            
+            # Prepare plant data (currently minimal, will expand when plant data is available)
+            plant_data = {
+                'age_days': (datetime.now() - plant.created_at).days if plant.created_at else 30,
+                # TODO: Add more plant-specific data when available:
+                # 'plant_type': plant.plant_type,
+                # 'optimal_moisture_min': plant.optimal_moisture_min,
+                # 'optimal_moisture_max': plant.optimal_moisture_max,
+                # 'optimal_temp_min': plant.optimal_temp_min,
+                # 'optimal_temp_max': plant.optimal_temp_max,
+                # 'optimal_light_min': plant.optimal_light_min,
+                # 'optimal_light_max': plant.optimal_light_max,
+                # 'watering_frequency_days': plant.watering_frequency_days,
+                # 'days_since_last_watering': plant.days_since_last_watering,
+                # 'care_level': plant.care_level,
+                # 'native_climate': plant.native_climate,
+            }
+            
+            # Predict using ML model
+            ml_result = health_classifier.predict({
+                'sensor_readings': sensor_readings,
+                'weather_data': weather_data,
+                'plant_data': plant_data  # Pass plant data (will use defaults for missing fields)
+            })
+            
+            # Get rule-based score for details
+            rule_based = calculate_plant_health_score(plant_id)
+            
+            # Combine ML prediction with rule-based details
+            return jsonify({
+                'score': ml_result['score_estimate'],
+                'status': ml_result['category'],
+                'confidence': ml_result['confidence'],
+                'probabilities': ml_result['probabilities'],
+                'model_type': 'ML (Random Forest)' if health_classifier.is_trained else 'Rule-Based',
+                'details': rule_based.get('details', {}),
+                'factors': rule_based.get('factors', []),
+                'current_values': rule_based.get('current_values', {})
+            })
+        except Exception as e:
+            print(f'Error using ML health model: {e}')
+            import traceback
+            traceback.print_exc()
+            # Fallback to rule-based
+            health = calculate_plant_health_score(plant_id)
+            health['model_type'] = 'Rule-Based (ML failed)'
+            return jsonify(health)
+    else:
+        # Use rule-based calculation
+        health = calculate_plant_health_score(plant_id)
+        health['model_type'] = 'Rule-Based'
+        return jsonify(health)
 
 @app.route('/api/chat', methods=['POST'])
 @login_required
