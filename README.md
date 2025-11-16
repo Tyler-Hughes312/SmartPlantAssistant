@@ -42,30 +42,29 @@ SmartPlantAssistant/
 
 - Python 3.8+ (backend)
 - Node.js 14+ and npm (frontend)
+- Neon Postgres database (free tier available at [neon.tech](https://neon.tech))
 - OpenAI API key (optional, for chatbot functionality)
 
 ### Environment Variables
 
-1. Copy the example environment file:
-   ```bash
-   cp .env.example .env
-   ```
+Create a `.env` file in the project root with the following:
 
-2. Edit `.env` and add your API keys:
-   ```bash
-   # OpenAI API Key for chatbot functionality (optional)
-   OPENAI_API_KEY=your_openai_api_key_here
-   
-   # NWS (National Weather Service) API User-Agent
-   # Format: AppName-your.email@domain.com
-   NWS_USER_AGENT=SmartPlantAssistant-your.email@example.com
-   
-   # Flask Secret Key (auto-generated if not set)
-   # SECRET_KEY=your_secret_key_here
-   
-   # Database URL (defaults to SQLite if not set)
-   # DATABASE_URL=sqlite:///smart_plant.db
-   ```
+```bash
+# Neon Postgres Database URL (required)
+DATABASE_URL=postgresql://username:password@ep-xxxxx.us-east-2.aws.neon.tech/neondb?sslmode=require
+
+# Flask Secret Key (required for sessions)
+SECRET_KEY=your-secret-key-here
+
+# NWS (National Weather Service) API User-Agent (required for weather)
+# Format: AppName-your.email@domain.com
+NWS_USER_AGENT=SmartPlantAssistant-your.email@example.com
+
+# OpenAI API Key (optional, for chatbot functionality)
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+**Important:** Never commit your `.env` file to version control. It's already in `.gitignore`.
 
 ### Backend Setup (Flask)
 
@@ -85,7 +84,12 @@ SmartPlantAssistant/
    pip install -r requirements.txt
    ```
 
-4. Run the Flask server:
+4. Initialize the database (first time only):
+   ```bash
+   python3 -c "from app import app, db; app.app_context().push(); db.create_all(); print('✅ Database tables created')"
+   ```
+
+5. Run the Flask server:
    ```bash
    python app.py
    ```
@@ -152,19 +156,37 @@ This will start both the backend and frontend servers. To stop them:
 ### Chatbot
 - `POST /api/chat` - Send message to AI chatbot (requires OpenAI API key)
 
-## Integrating Your Sensors
+## Raspberry Pi Sensor Integration
 
-To connect your actual sensors, you have two options:
+This project includes scripts for connecting Raspberry Pi sensors (AHT20, BH1750, Arduino I2C soil moisture) directly to the Neon database.
 
-1. **Update sensor data via API**: Modify your sensor code to POST data to `/api/sensor-data` endpoint
-2. **Modify backend**: Update the `get_sensor_data()` function in `app.py` to fetch from your sensor's API or device
+### Quick Setup
 
-Example POST to update sensor data:
-```bash
-curl -X POST http://localhost:5000/api/sensor-data \
-  -H "Content-Type: application/json" \
-  -d '{"light": 450, "moisture": 50, "temperature": 75}'
-```
+1. **SSH into your Raspberry Pi** and navigate to the project directory
+2. **Install sensor dependencies**:
+   ```bash
+   pip3 install --user --break-system-packages psycopg2-binary python-dotenv adafruit-blinka adafruit-circuitpython-ahtx0 adafruit-circuitpython-bh1750 RPi.GPIO
+   ```
+
+3. **Set up environment variables** (create `~/.env` or use systemd service):
+   ```bash
+   DATABASE_URL=postgresql://username:password@ep-xxxxx.us-east-2.aws.neon.tech/neondb?sslmode=require
+   PLANT_ID=1
+   ```
+
+4. **Set up automatic readings** (every 10 seconds):
+   ```bash
+   cd raspberry_pi
+   chmod +x setup_10_second_readings.sh
+   sudo ./setup_10_second_readings.sh
+   ```
+
+5. **Check service status**:
+   ```bash
+   sudo systemctl status smart-plant-sensor.service
+   ```
+
+See `raspberry_pi/README.md` for detailed setup instructions and troubleshooting.
 
 ## Technologies
 
@@ -172,7 +194,7 @@ curl -X POST http://localhost:5000/api/sensor-data \
 - **Frontend**: React, Chart.js, Axios
 - **ML**: Custom neural network model for predictions
 - **APIs**: National Weather Service API, OpenAI API (optional)
-- **Database**: SQLite (configurable via DATABASE_URL)
+- **Database**: Neon Postgres (cloud-hosted, accessible from Raspberry Pi and backend)
 - **Authentication**: Session-based with Flask-Login
 
 ## Browser Compatibility
@@ -186,9 +208,10 @@ Works in all modern browsers that support:
 ## Development Notes
 
 - The backend uses CORS to allow React frontend to communicate
-- Sensor data is currently simulated but can be easily replaced with real sensor readings
-- Weather data is fetched based on user's geolocation (with fallback to default location)
+- Sensor data comes from Raspberry Pi sensors connected to Neon Postgres database
+- Weather data is fetched from NWS API based on user's saved location (must be set in Location Settings)
 - Predictions update every 5 seconds along with sensor data
+- All data displayed is real-time from physical sensors (no simulated data)
 
 ## Security Notes
 

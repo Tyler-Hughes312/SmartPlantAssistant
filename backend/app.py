@@ -1221,22 +1221,90 @@ def chat():
                 'api_key': api_key
             }]
             
-            # Prepare context for the assistant
+            # Prepare comprehensive context for the assistant
+            sensor_data = context.get('sensorData', {})
+            weather_data = context.get('weatherData', {})
+            health_data = context.get('healthData', {})
+            prediction_data = context.get('prediction', {})
+            recent_history = context.get('recentHistory', [])
+            trends = context.get('trends')
+            last_reading_time = context.get('lastReadingTime')
+            
+            # Format last reading time
+            last_reading_str = 'N/A'
+            if last_reading_time:
+                try:
+                    from datetime import datetime
+                    if isinstance(last_reading_time, str):
+                        dt = datetime.fromisoformat(last_reading_time.replace('Z', '+00:00'))
+                    else:
+                        dt = last_reading_time
+                    last_reading_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    last_reading_str = str(last_reading_time)
+            
+            # Build context info string
             context_info = f"""
 Current Plant Information:
 - Plant Name: {context.get('plantName', 'Unknown')}
-- Health Score: {context.get('healthData', {}).get('score', 'N/A')}/100
-- Health Status: {context.get('healthData', {}).get('status', 'Unknown')}
+- Health Score: {health_data.get('score', 'N/A')}/100
+- Health Status: {health_data.get('status', 'Unknown')}
+- Last Reading Time: {last_reading_str}
 
 Current Sensor Readings:
-- Soil Moisture: {context.get('sensorData', {}).get('moisture', 'N/A')}%
-- Temperature: {context.get('sensorData', {}).get('temperature', 'N/A')}°F
-- Light Level: {context.get('sensorData', {}).get('light', 'N/A')} lux
+- Soil Moisture: {sensor_data.get('moisture', 'N/A')}%
+- Temperature: {sensor_data.get('temperature', 'N/A')}°F
+- Light Level: {sensor_data.get('light', 'N/A')} lux
+- Humidity: {sensor_data.get('humidity', weather_data.get('humidity', 'N/A'))}%
 
 Current Weather:
-- Temperature: {context.get('weatherData', {}).get('temperature', 'N/A')}°F
-- Humidity: {context.get('weatherData', {}).get('humidity', 'N/A')}%
-- Forecast: {context.get('weatherData', {}).get('forecast', 'N/A')}
+- Temperature: {weather_data.get('temperature', 'N/A')}°F
+- Humidity: {weather_data.get('humidity', 'N/A')}%
+- Forecast: {weather_data.get('forecast', weather_data.get('description', 'N/A'))}
+- Precipitation: {weather_data.get('precipitation', 'N/A')}%
+- Wind Speed: {weather_data.get('wind_speed', 'N/A')} mph
+
+Watering Prediction:
+- Hours Until Watering: {prediction_data.get('hoursUntilWatering', 'N/A')}
+- Watering Frequency: {prediction_data.get('wateringFrequencyDays', 'N/A')} days
+- Recommendation: {prediction_data.get('recommendation', 'N/A')}
+- Model Type: {prediction_data.get('modelType', 'N/A')}
+"""
+            
+            # Add recent history trends if available
+            if recent_history and len(recent_history) > 0:
+                context_info += f"""
+Recent Sensor History (Last {len(recent_history)} readings):
+"""
+                for i, reading in enumerate(recent_history[-5:], 1):
+                    reading_time = reading.get('timestamp', '')
+                    if isinstance(reading_time, str):
+                        try:
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(reading_time.replace('Z', '+00:00'))
+                            reading_time = dt.strftime('%H:%M:%S')
+                        except:
+                            pass
+                    context_info += f"- Reading {i} ({reading_time}): Moisture={reading.get('moisture', 'N/A')}%, Temp={reading.get('temperature', 'N/A')}°F, Light={reading.get('light', 'N/A')} lux\n"
+            
+            # Add trends if available
+            if trends:
+                context_info += f"""
+Sensor Trends (over recent readings):
+- Moisture Change: {trends.get('moistureTrend', 0):+.1f}%
+- Temperature Change: {trends.get('temperatureTrend', 0):+.1f}°F
+- Light Change: {trends.get('lightTrend', 0):+.1f} lux
+"""
+            
+            # Add health breakdown if available
+            if health_data and isinstance(health_data, dict) and 'breakdown' in health_data:
+                breakdown = health_data.get('breakdown', {})
+                context_info += f"""
+Health Score Breakdown:
+- Moisture Score: {breakdown.get('moisture_score', 'N/A')}/25
+- Temperature Score: {breakdown.get('temperature_score', 'N/A')}/25
+- Light Score: {breakdown.get('light_score', 'N/A')}/25
+- Consistency Score: {breakdown.get('consistency_score', 'N/A')}/25
 """
             
             # Use OpenAI directly with AutoGen wrapper for better compatibility
@@ -1246,22 +1314,53 @@ Current Weather:
             
             # Create system message with context
             system_message = f"""You are a helpful plant care assistant. You help users understand their plant's health, 
-provide care recommendations, and answer questions about plant maintenance. Use the following context 
+provide care recommendations, and answer questions about plant maintenance. Use the following REAL-TIME context 
 to provide personalized advice:
 
 {context_info}
 
-Be friendly, informative, and provide actionable advice based on the current sensor readings and health data."""
+IMPORTANT GUIDELINES:
+- All data provided is from real sensors connected to the plant (not simulated)
+- Use the recent history and trends to identify patterns and changes
+- Reference specific sensor readings and timestamps when relevant
+- Consider the watering prediction when giving watering advice
+- Be specific about what the data indicates and what actions to take
+- If trends show declining moisture or other concerning patterns, mention them
+- Reference the health score breakdown to explain which factors are affecting plant health
+
+Be friendly, informative, and provide actionable advice based on the current sensor readings, trends, and health data."""
             
-            # Call OpenAI API
-            completion = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_message}
-                ],
-                temperature=0.7
-            )
+            # Call OpenAI API - try multiple models in order of preference
+            models_to_try = ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"]
+            completion = None
+            model_used = None
+            
+            for model_name in models_to_try:
+                try:
+                    completion = client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "system", "content": system_message},
+                            {"role": "user", "content": user_message}
+                        ],
+                        temperature=0.7
+                    )
+                    model_used = model_name
+                    break
+                except Exception as e:
+                    error_str = str(e)
+                    # If model not found, try next model
+                    if 'model_not_found' in error_str or 'does not exist' in error_str:
+                        continue
+                    # For other errors (quota, rate limit, etc.), raise immediately
+                    raise
+            
+            if not completion:
+                return jsonify({
+                    'error': 'No available models',
+                    'message': 'None of the OpenAI models (gpt-4o, gpt-4-turbo, gpt-4, gpt-3.5-turbo) are available for your account. Please check your OpenAI account access.',
+                    'instructions': 'Visit https://platform.openai.com/ to check your account status and available models.'
+                }), 503
             
             # Extract response
             message_content = completion.choices[0].message.content
@@ -1279,13 +1378,35 @@ Be friendly, informative, and provide actionable advice based on the current sen
             }), 503
             
     except Exception as e:
+        error_str = str(e)
         print(f'Chat error: {e}')
         import traceback
         traceback.print_exc()
-        return jsonify({
-            'error': str(e),
-            'message': 'Sorry, I encountered an error. Please try again.'
-        }), 500
+        
+        # Provide helpful error messages for common issues
+        if 'insufficient_quota' in error_str or 'quota' in error_str.lower():
+            return jsonify({
+                'error': 'OpenAI quota exceeded',
+                'message': 'Your OpenAI account has exceeded its quota. Please add credits to your account.',
+                'instructions': 'Visit https://platform.openai.com/account/billing to add credits or upgrade your plan.'
+            }), 503
+        elif 'rate_limit' in error_str.lower():
+            return jsonify({
+                'error': 'Rate limit exceeded',
+                'message': 'Too many requests to OpenAI API. Please wait a moment and try again.',
+                'instructions': 'The chatbot will be available again shortly.'
+            }), 429
+        elif 'model_not_found' in error_str or 'does not exist' in error_str:
+            return jsonify({
+                'error': 'Model not available',
+                'message': 'The requested OpenAI model is not available for your account.',
+                'instructions': 'Please check your OpenAI account tier and available models at https://platform.openai.com/'
+            }), 503
+        else:
+            return jsonify({
+                'error': str(e),
+                'message': 'Sorry, I encountered an error. Please try again.'
+            }), 500
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

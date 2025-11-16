@@ -2,7 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { sendChatMessage } from '../services/api';
 import './Chatbot.css';
 
-const Chatbot = ({ sensorData = null, weatherData = null, healthData = null, plantName = null }) => {
+const Chatbot = ({ 
+  sensorData = null, 
+  weatherData = null, 
+  healthData = null, 
+  plantName = null,
+  prediction = null,
+  history = []
+}) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -21,6 +28,13 @@ const Chatbot = ({ sensorData = null, weatherData = null, healthData = null, pla
     scrollToBottom();
   }, [messages]);
 
+  // Log when context data updates (for debugging)
+  useEffect(() => {
+    if (sensorData?.timestamp) {
+      console.log('Chatbot context updated with latest sensor data:', sensorData.timestamp);
+    }
+  }, [sensorData, weatherData, healthData, prediction]);
+
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
@@ -31,12 +45,39 @@ const Chatbot = ({ sensorData = null, weatherData = null, healthData = null, pla
     setLoading(true);
 
     try {
-      const response = await sendChatMessage(userMessage, {
-        sensorData,
-        weatherData,
-        healthData,
-        plantName
-      });
+      // Prepare comprehensive context with latest data
+      const context = {
+        sensorData: sensorData || {},
+        weatherData: weatherData || {},
+        healthData: healthData || {},
+        plantName: plantName || 'Unknown',
+        prediction: prediction || {},
+        // Include recent sensor history trends (last 5 readings)
+        recentHistory: history.slice(-5).map(h => ({
+          timestamp: h.timestamp,
+          moisture: h.moisture,
+          temperature: h.temperature,
+          light: h.light
+        })),
+        // Calculate trends from recent history (comparing last 5 readings)
+        trends: (() => {
+          const recent = history.slice(-5);
+          if (recent.length >= 2) {
+            const first = recent[0];
+            const last = recent[recent.length - 1];
+            return {
+              moistureTrend: (last?.moisture || 0) - (first?.moisture || 0),
+              temperatureTrend: (last?.temperature || 0) - (first?.temperature || 0),
+              lightTrend: (last?.light || 0) - (first?.light || 0)
+            };
+          }
+          return null;
+        })(),
+        // Timestamp of latest reading
+        lastReadingTime: sensorData?.timestamp || (history.length > 0 ? history[history.length - 1]?.timestamp : null)
+      };
+
+      const response = await sendChatMessage(userMessage, context);
 
       setMessages(prev => [...prev, {
         role: 'assistant',

@@ -318,6 +318,8 @@ const Dashboard = () => {
               weatherData={weatherData}
               healthData={healthData}
               plantName={selectedPlant?.name}
+              prediction={prediction}
+              history={history}
             />
           </div>
         </div>
